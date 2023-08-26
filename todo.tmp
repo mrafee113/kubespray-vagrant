@@ -1,0 +1,17 @@
+# vagrant-down-help.sh
+- write I guess
+
+# edit-playbooks.sh
+- Add a task to etc-hosts task yml file,
+   that adds the line "HOST_IP HOSTNAME" to /etc/hosts
+
+# manage-offline-images
+- handle conditions of existing docker images and docker image tarballs better and more accurately.
+   stop using such half-assed measures. 
+
+-- download files and images anew
+
+# test running kubespray vagrant up
+
+# README.md
+- write down a good explanatory doc.

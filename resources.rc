@@ -1,0 +1,58 @@
+#!/bin/bash
+
+if [[ -n "${BASH_SOURCE}" ]]; then
+    # Script is being sourced or executed
+    root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    # Script is being executed as standalone
+    root_dir="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+fi
+source "$root_dir"/utils.rc
+
+## files and dirs
+assets_dir="$root_dir"/assets
+
+kubespray_backup_dir="$root_dir"/kubespray.bak
+kubespray_dir="$root_dir"/kubespray
+
+vagrantfile="$kubespray_dir"/Vagrantfile
+venv_dir="$root_dir"/venv
+
+inventories_dir="$kubespray_dir"/inventory
+src_inventory_dir="$assets_dir"/inventory
+target_inventory_dir="$inventories_dir"/"$(grep '$inventory' "$assets_dir"/Vagrantfile.conf | cut -d'"' -f2 | cut -d'/' -f2)"  # should depend on $vagrantconf
+
+inventory_edit_scripts_dir="$root_dir"/inventory-edit-scripts
+
+dest_working_dir="$kubespray_dir"/vagrant
+relative_working_dir="$(echo "$dest_working_dir" | sed "s|$kubespray_dir/||")"
+remote_working_dir="/vagrant/$relative_working_dir"
+
+## assets
+vagrantconf="$assets_dir"/Vagrantfile.conf
+vbox_guest_additions_dir="$assets_dir"/vbox-guest-additions
+offline_files_dir="$assets_dir"/offline-files
+offline_images_dir="$assets_dir"/offline-images
+registry_volume_dir="$assets_dir"/registry-volume
+
+## inventory files
+offline_file="$src_inventory_dir"/group_vars/all/offline.yml
+mirror_file="$src_inventory_dir"/group_vars/all/mirror.yml
+k8s_cluster_file="$src_inventory_dir"/group_vars/k8s_cluster/k8s-cluster.yml
+containerd_file="$src_inventory_dir"/group_vars/all/containerd.yml
+
+## web links
+kubespray_github_url="https://github.com/kubernetes-sigs/kubespray.git"
+kubespray_release_version="v2.22.1"
+
+# mkdir
+for dir in \
+    "$assets_dir" \
+    "$dest_working_dir" \
+    "$vbox_guest_additions_dir" \
+    "$offline_files_dir" \
+    "$offline_images_dir" \
+    "$registry_volume_dir"
+do
+    mkdir -p "$dir"
+done

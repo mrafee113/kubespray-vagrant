@@ -1,0 +1,16 @@
+.idea
+.git
+venv/
+__pycache__/
+*.py[cod]
+
+assets/vbox-guest-additions/*.iso
+assets/inventory/
+assets/offline-files/
+assets/offline-images/
+assets/registry-volume/
+
+test.sh
+
+kubespray/
+kubespray.bak/

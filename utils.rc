@@ -1,0 +1,431 @@
+#!/bin/bash
+
+cbasename() {
+    if [ -z "$1" ]; then 
+        return 1
+    fi
+    local filepath="$1"
+    if [ -z "$root_dir" ]; then
+        basename "$filepath"
+    else
+        echo "${filepath#$root_dir}"
+    fi
+}
+
+## echo functions
+echo_yellow() { echo "$(tput setaf 3)$*$(tput sgr0)" ; }
+echo_bold_yellow() { echo "$(tput bold setaf 3)$*$(tput sgr0)" ; }
+
+echo_black() { echo "$(tput setaf 0)$*$(tput sgr0)" ; }
+
+echo_un_blue() { echo "$(tput smul setaf 4)$*$(tput sgr0)" ; }
+echo_bold_blue() { echo "$(tput bold setaf 4)$*$(tput sgr0)" ; }
+
+echo_bold_cyan() { echo "$(tput bold setaf 6)$*$(tput sgr0)" ; }
+echo_dim_cyan() { echo "$(tput dim setaf 6)$*$(tput sgr0)" ; }
+echo_cyan() { echo "$(tput setaf 6)$*$(tput sgr0)" ; }
+
+echo_dim_magenta() { echo "$(tput dim setaf 5)$*$(tput sgr0)" ; }
+echo_bold_dim_magenta() { echo "$(tput dim bold setaf 5)$*$(tput sgr0)" ; }
+
+echo_red() { echo "$(tput setaf 1)$*$(tput sgr0)" ; }
+echo_bold_red() { echo "$(tput bold setaf 1)$*$(tput sgr0)" ; }
+echo_bold_un_red() { echo "$(tput bold smul setaf 1)$*$(tput sgr0)" ; }
+
+echo_black_bg() { echo "$(tput setab 0)$*$(tput sgr0)" ; }
+echo_white_bg() { echo "$(tput setab 7)$*$(tput sgr0)" ; }
+
+## printing functions
+_prelog() { echo "$1:$2:$3: " ; }
+log_announce() { echo_bold_blue "$(_prelog "$(cbasename "$0")" "${FUNCNAME[1]}" "${BASH_LINENO[0]}")""### $* ###" ; }
+log_error() { echo_bold_red "$(_prelog "$(cbasename "$0")" "${FUNCNAME[1]}" "${BASH_LINENO[0]}")""$*" ; }
+log_warning() { echo_bold_yellow "$(_prelog "$(cbasename "$0")" "${FUNCNAME[1]}" "${BASH_LINENO[0]}")""$*" ; }
+log_info() { echo_cyan "$(_prelog "$(cbasename "$0")" "${FUNCNAME[1]}" "${BASH_LINENO[0]}")""$*" ; }
+log_debug() { echo_bold_un_red "$(_prelog "$(cbasename "$0")" "${FUNCNAME[1]}" "${BASH_LINENO[0]}")""$*" ; }
+log_code() { echo_black_bg "$(echo_dim_magenta "$(_prelog "$(cbasename "$0")" "${FUNCNAME[1]}" "${BASH_LINENO[0]}")""$*")" ; }
+log_help() { echo_dim_cyan "$(_prelog "$(cbasename "$0")" "${FUNCNAME[1]}" "${BASH_LINENO[0]}")""$*" ; }
+
+## utils
+sedfile() {
+    if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
+        log_error "you must provide the two arguments pattern and file."
+        exit 1
+    fi
+    local pattern="$1"
+    local print_pattern="$2"
+    local file="$3"
+    
+    if [ "$4" = "--regex" ]; then
+        regex="-E"
+    else
+        regex=""
+    fi
+
+    sed -i $regex "$pattern" "$file"
+    sed -n $regex "$print_pattern" "$file"
+}
+
+set_yaml_var() {
+    if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
+        log_error "3 args var_name, var_value, and file must be provided."
+        exit 1
+    fi
+    local var_name="$1"
+    local var_value="$2"
+    local file="$3"
+    
+    local tail=true
+    if [ "$4" = "--head" ]; then
+        tail=false
+    fi
+
+    # if file already has variable
+    if [ -n "$(sed -n -E "/^#?\s?$var_name:.*$/p" "$file")" ]; then
+        local pattern='s@^#?\s?'"$var_name"':.*$@'"$var_name"': "'"$var_value"'"@'
+        local print_pattern="/^$var_name:.*$/p"
+        sedfile "$pattern" "$print_pattern" "$file" --regex
+    else
+        line="$var_name: \"$var_value\""
+        if [ "$tail" = "true" ]; then
+            echo "$line" >> "$file"
+        elif [ "$tail" = "false" ]; then
+            sed -i '1i\'"$line" "$file"
+        fi
+    fi
+}
+
+verify_ip_addr() {
+    local ip="$1"
+    if [ -z "$ip" ]; then
+        log_error "empty string is not ip!"
+        return 1
+    fi
+
+    local re='^(0*(1?[0-9]{1,2}|2([0-4][0-9]|5[0-5]))\.){3}'
+          re+='0*(1?[0-9]{1,2}|2([‌​0-4][0-9]|5[0-5]))$'
+
+    if [[ $ip =~ $re ]]; then
+        return 0
+    else
+        log_error "string $ip is not an ip!"
+        return 1
+    fi
+}
+
+get_vbox_interface() {
+    default="vboxnet0"
+    local machine_number=1
+    if [ -n "$1" ] && [ "$1" -gt 1 ]; then
+        machine_number="$1"
+    fi
+    local machine_sub_title="kubespray_k8s-${machine_number}"
+    if ! command -v VBoxManage >/dev/null 2>&1; then
+        log_error "command VBoxManage is not availalbe"
+        return 1
+    fi
+    local machine_name=$(VBoxManage list vms | grep "$machine_sub_title" | cut -d' ' -f1 | cut -d'"' -f2)
+    if [ -z "$machine_name" ]; then echo "$default"; return 0; fi
+    local interface_name=$(VBoxManage showvminfo "$machine_name" --machinereadable | grep -E 'hostonlyadapter[0-9]+="[^"]*"' | cut -d'"' -f2)
+
+    if echo "$interface_name" | grep -E 'vboxnet[0-9]+' >/dev/null 2>&1; then
+        echo "$interface_name"
+    else
+        # log_error "found interface name ($interface_name) does not match pattern vboxnet[0-9]+"
+        # return 1
+        echo "$default"
+        return 0
+    fi
+}
+
+get_vagrant_ip_prefix() {
+    sed -n '/$subnet = "/p' "$vagrantconf" | cut -d'"' -f2
+}
+
+netplan_vbox_interface() {
+    # first file in /etc/netplan that starts with "01-" and ends with ".yaml"
+    local network_file="$(ls -1 /etc/netplan/01-*.yaml | sed '1p;d')"
+    local interface_name="$(get_vbox_interface)"
+    
+    if ! command -v yq >/dev/null 2>&1; then
+        log_error "command yq not found"
+        return 1
+    fi
+
+    if [ "$1" = "add" ]; then
+        local mode="add"
+    elif [ "$1" = "remove" ]; then
+        local mode="remove"
+    elif [ "$1" = "apply" ]; then
+        local mode="apply"
+    else
+        log_error "first argument should be \"add\" or \"remove\"."
+        return 1
+    fi
+    shift
+
+    local static_ip="$(get_vagrant_ip_prefix).1/24"
+    if [ -n "$1" ] && verify_ip_addr "$1"; then
+        static_ip="$1"
+    fi
+    
+    if [ "$mode" = "add" ]; then
+        log_warning "requesting permission to modify '$network_file'"
+        sudo yq -i ".network.ethernets.${interface_name}.dhcp4 = \"no\"" "$network_file"
+        sudo yq -i ".network.ethernets.${interface_name}.addresses = [\"$static_ip\"]" "$network_file"
+
+    elif [ "$mode" = "remove" ]; then
+        log_warning "requesting permission to modify '$network_file'"
+        sudo yq -i "del(.network.ethernets.${interface_name})" "$network_file"
+        if [ "$(yq '.network.ethernets' "$network_file")" = "{}" ]; then
+            sudo yq -i 'del(.network.ethernets)' "$network_file"
+        fi
+    elif [ ! "$mode" = "apply" ]; then
+        return 1
+    fi
+    
+    log_warning "requesting permission to apply 'netplan apply'"
+    sudo netplan apply
+}
+
+get_host_ip_ifconfig() {
+    host_ip_prefix=$(get_vagrant_ip_prefix)
+    host_ip=$(ifconfig | grep "inet $host_ip_prefix" | awk '{print $2}')
+    if [ -z "$host_ip" ]; then return 1; fi
+    echo "$host_ip"
+}
+
+get_host_ip_netplan() {
+    local network_file="$(ls -1 /etc/netplan/01-*.yaml | sed '1p;d')"
+    local interface_name=$(get_vbox_interface)
+    ip=$(yq ".network.ethernets.${interface_name}.addresses[0]" "$network_file" | cut -d'/' -f1)
+    if [ "$ip" = "null" ]; then return 1; fi
+    echo "$ip"
+}
+
+get_host_ip() {
+    ip="$(get_host_ip_ifconfig)"
+    if [ $? -eq 0 ] && verify_ip_addr "$ip"; then
+        echo "$ip"
+        return 0
+    fi
+    ip="$(get_host_ip_netplan)"
+    if [ $? -eq 0 ] && verify_ip_addr "$ip"; then
+        echo "$ip"
+        return 0
+    fi
+    ip="$(get_vagrant_ip_prefix).1"
+    echo "$ip"
+}
+
+filename_to_date() {
+    if [ -z "$1" ]; then return 1; fi
+    filename=$(basename "$1")
+    datetime="${filename%.list}"
+    year=${datetime:0:4}; year=${year#0}
+    month=${datetime:5:2}; month=${month#0}
+    day=${datetime:8:2}; day=${day#0}
+    hour=${datetime:11:2}; hour=${hour#0}
+    minute=${datetime:14:2}; minute=${minute#0}
+
+    # Concatenate components with padding to ensure proper sorting
+    printf "%04d%02d%02d%02d%02d\t%s\n" "$year" "$month" "$day" "$hour" "$minute" "$1"
+}
+
+get_latest_offline_list() {
+    if [ "$1" = "--files" ]; then
+        local dir="$offline_files_dir"
+    elif [ "$1" = "--images" ]; then
+        local dir="$offline_images_dir"
+    else
+        return 1
+    fi
+    files=$(ls -1 "$dir"/*.list 2>/dev/null)
+    sorted_files=$(echo "$files" | while IFS= read -r file; do filename_to_date "$file"; done | sort -nr | cut -f2-)
+    if [ $? -gt 0 ] || [ -z "$sorted_files" ]; then
+        return 1
+    else
+        output=$(echo "$sorted_files" | sed '1p;d')
+        echo "$(basename "$output")"
+    fi
+}
+
+get_latest_offline_files_list() {
+    output=$(get_latest_offline_list --files)
+    if [ $? -gt 0 ]; then
+        return 1
+    else
+        echo "$output"
+    fi
+}
+
+get_latest_offline_images_list() {
+    output=$(get_latest_offline_list --images)
+    if [ $? -gt 0 ]; then
+        return 1
+    else
+        echo "$output"
+    fi
+}
+
+set_e_status() {
+    if [[ $- == *e* ]]; then echo "-"; else echo "+"; fi
+}
+
+remove_file_or_dir() {
+    log_warning "removing: $(cbasename "$1")"
+    rm -rvf "$1"
+    log_warning "removed: $(cbasename "$1")"
+}
+
+docker_image_exists() {
+    if [ -z "$1" ]; then
+        log_error "no argument provided."
+        return 2
+    fi
+    image="$1"
+    docker image inspect "$image" >/dev/null 2>&1
+    exit_code=$?
+    return $exit_code
+}
+
+docker_images_exist() {
+    if [ -z "$1" ] || [ ! -f  "$1" ]; then
+        log_error "either no arg or wrong arg provided."
+        return 2
+    fi
+    images_list="$1"
+    state=true
+    for image in $(cat "$images_list") registry:latest; do
+        docker_image_exists "$image"
+        exit_code=$?
+
+        if [ $exit_code -ne 0 ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+docker_image_to_filename() {
+    if [ -z "$1" ]; then
+        log_error "no arg provided"
+        return 2
+    fi
+    image="$1"
+    echo ${image} | sed s@"/"@"-"@g | sed s/":"/"-"/g
+}
+
+docker_imagefile_exists() {
+    if [ -z "$1" ] || [ -z "$2" ] || [ ! -d "$2" ]; then
+        log_error "not enough or wrong args provided."
+        return 2
+    fi
+    image="$1"
+    images_dir="$2"
+    filename=$(docker_image_to_filename "$image")
+    file="$images_dir"/"$filename"
+    if [ -f "$file" ]; then return 0
+    else return 1;
+    fi
+}
+
+docker_imagefiles_exist() {
+    if [ -z "$1" ] || [ ! -f "$1" ]; then
+        log_error "either no arg or wrong arg provided."
+        return 2
+    fi
+    images_list="$1"
+    
+    images_dir="${images_list%.list}"
+    if [ -n "$2" ] && [ -d "$2" ]; then
+        images_dir="$2"
+    fi
+    
+    for image in $(cat "$images_list"); do
+        docker_imagefile_exists "$image" "$images_dir"
+        exit_code=$?
+
+        if [ $exit_code -ne 0 ]; then
+            return 1
+        fi
+    done
+    return 0
+}
+
+maintain_docker_container() {
+    if [ -z "$1" ]; then
+        log_error "either no arg or wrong arg provided"
+        return 2
+    fi
+    container_name="$1"
+    container_status=$(docker container inspect -f '{{.State.Status}}' $container_name 2>/dev/null)
+    exit_code=$?
+    if [ $exit_code -eq 0 ]; then
+        if   [ "$container_status" = "running" ]; then                                 return 0
+        elif [ "$container_status" = "paused"  ]; then docker unpause $container_name; return 0
+        elif [ "$container_status" = "exited"  ]; then docker start   $container_name; return 0
+        else
+            log_warning "docker container status is $status. act accordingly."
+            return 3
+        fi
+    elif [ $exit_code -eq 1 ]; then
+        return 1
+    fi
+}
+
+string_contains() {
+    if [ -z "$1" ] || [ -z "$2" ]; then
+        log_error "args line and string must be provided."
+        return 2
+    fi
+    line="$1"
+    string="$2"
+    if echo "$line" | grep "$string" >/dev/null 2>&1; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+string_endswith() {
+    if [ -z "$1" ] || [ -z "$2" ]; then
+        log_error "args line and string must be provided."
+        return 2
+    fi
+    line="$1"
+    string="$2"
+    if [[ "$line" == *"$string" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+string_rfind() {
+    if [ -z "$1" ] || [ -z "$2" ]; then
+        log_error "args string and substr must be provided."
+        return 2
+    fi
+    string="$1"
+    substr="$2"
+    echo "$string" | awk -F"$substr" '{print length($0)-length($NF)}'
+}
+
+string_find() {
+    if [ -z "$1" ] || [ -z "$2" ]; then
+        log_error "args string and substr must be provided."
+        return 2
+    fi
+    string="$1"
+    substr="$2"
+    echo "$string" | awk -F"$substr" '{print length($1)}'
+}
+
+catstrip() {
+    if [ -z "$1" ]; then
+        log_error "arg filename must be provided."
+        return 2
+    fi
+    filename="$1"
+    python3 -c 'import sys; print(sys.argv[1].strip())' "$(cat "$filename")"
+}
