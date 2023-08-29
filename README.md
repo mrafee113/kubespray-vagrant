@@ -108,3 +108,87 @@ This file contains a bunch of functions to ease the writing of the scripts. It i
     - Takes one argument `filename`.  
     - It `cat`s the file and then uses python `str.strip` and then prints the result.  
 
+### resources.rc  
+This file contains some things for scripts to use, also it can be used for debugging. You can `source` it in a terminal (from any directory).  
+- Things it contains:
+    - Files and directories:
+        - `root_dir` : the directory that the file `resources.rc` resides on.
+        - `assets_dir=$root_dir/assets` : this directory contains a couple of things that are needed to be provided for kubespray...
+        - `kubespray_backup_dir=$root_dir/kubespray.bak`
+        - `kubespray_dir=$root_dir/kubespray`
+        - `vagrantfile=$kubespray_dir/Vagrantfile`
+        - `venv_dir=$root_dir/venv`
+        - `inventories_dir=$kubespray_dir/inventory`
+        - `src_inventory_dir=$assets_dir/inventory` : your actual inventory. if you want to modify things either manually or by modifying scripts, this is your directory.
+        - `target_inventory_dir=$inventories_dir/user` : `user` is based on the value of `$inventory` in file `$assets_dir/Vagrantfile.conf`. this directory will be used by kubespray. `src_inventory_dir` will be copied here.
+        - `inventory_edit_scripts_dir=$root_dir/inventory-edit-scripts` : contains a bunch of scripts to edit `src_inventory_dir`
+        - `dest_working_dir=$kubespray_dir/vagrant` : this directory will be mounted inside each machine as `/vagrant`
+        - `relative_working_dir` : `$dest_working_dir`, but relative to `$kubespray_dir`
+        - `remote_working_dir=/vagrant/$relative_working_dir` : #bug It should be /vagrant... I think...
+        - assets
+            - `vagrantconf=$assets_dir/Vagrantfile.conf` : this configuration file is in ruby and the content will be passed on to the Vagrantfile inside kubespray.
+            - `vbox_guest_additions_dir=$assets_dir/vbox-guest-additions`
+            - `offline_files_dir=$assets_dir/offline-files` : this dir contains offline files. they are organized like this. there's a "%Y-%m-%d-%H-%D.list" that contains a list of links (they may be a bit weird but you'll find that out later in the docs). There's also a directory with the same name (minus the `.list`) that contains the downloaded files.
+            - `offline_images_dir=$assets_dir/offline-images` : same as offline-files
+            - `registry_volume_dir=$assets_dir/registry-volume` : this directory will be mounted persistent storage for docker private registry.
+        - inventory files
+            - `offline_file=$src_inventory_dir/group_vars/all/offline.yml`
+            - `mirror_file=$src_inventory_dir/group_vars/all/mirror.yml`
+            - `k8s_cluster_file=$src_inventory_dir/group_vars/k8s_cluster/k8s-cluster.yml`
+            - `containerd_file=$src_inventory_dir/group_vars/all/containerd.yml`
+    - web links
+        - `kubespray_github_url="https://github.com/kubernetes-sigs/kubespray.git"`
+        - `kubespray_release_version="v2.22.1"`
+
+Also these directories will be created if they don't already exist:
+- `assets_dir`
+- `dest_working_dir`
+- `vbox_guest_additions_dir`
+- `offline_files_dir`
+- `offline_images_dir`
+- `registry_volume_dir`
+
+### update-git.sh
+If `kubespray_backup_dir` doesn't exist, it will be cloned. The clone will depend on `kubespray_release_version`. If it is empty, branch `main` will be cloned.  
+If a branch is checked out in `kubespray_backup_dir`, it will be pulled.  
+If `kubespray_dir` doesn't exist, it will be created by copying `kubespray_dir`.  
+
+### vagrant-conf-copy.sh
+It provides the `$vagrantconf` file for kubespray. So it is important to modify it before this script runs.  
+
+### venv.sh
+If the `venv_dir` does not exist a virtualenv will be created there.  
+The venv at `venv_dir` will be activated and the `$kubespray_dir/requirements.txt` will be installed on pip.  
+
+### inventory-init.sh
+If optional argument `--reset` is provided, it will first remove `src_inventory_dir`.  
+If directory `src_inventory_dir` doesn't exist, it will be created by copying `inventories_dir/sample`.  
+
+### inventory-edit.sh
+Takes the following arguments:
+- `--offline-file`
+- `--mirror-file`
+- `--k8s-cluster-file`
+- `--containerd-file`
+- `--all`
+
+Except for `--all`, every arg corresponds with a file in `$inventory_edit_scripts_dir`.  
+
+### inventory-edit-scripts/
+#### offline-files
+#### mirror-file
+#### k8s-cluster-file
+#### containerd-file
+### vbox-guest-additions.sh
+### vagrantfile-edit.sh
+### inventory-copy.sh
+### generate-offline-lists.sh
+### manage-offline-files
+### manage-offline-images
+### assets
+#### docker-daemon.json
+#### docker.sh
+#### init.sh
+#### offline-files/ and offline-images/
+#### Vagrantfile.conf
+#### vbox-guest-additions/

@@ -21,8 +21,9 @@ fi
 source "$venv_dir"/bin/activate
 log_info "installing on pip from $kubespray_dir/requirements.txt..."
 
-if curl http://localhost:10809 >/dev/null 2>&1; then
-    pip install --proxy http://localhost:10809 -U -r "$kubespray_dir"/requirements.txt
+proxy="http://localhost:10809"
+if curl $proxy >/dev/null 2>&1; then
+    pip install --proxy $proxy -U -r "$kubespray_dir"/requirements.txt
 else
     pip install -U -r "$kubespray_dir"/requirements.txt
 fi

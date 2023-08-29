@@ -158,7 +158,7 @@ netplan_vbox_interface() {
     elif [ "$1" = "apply" ]; then
         local mode="apply"
     else
-        log_error "first argument should be \"add\" or \"remove\"."
+        log_error "first argument should be \"add\", \"remove\", or \"apply\"."
         return 1
     fi
     shift
@@ -267,10 +267,6 @@ get_latest_offline_images_list() {
     fi
 }
 
-set_e_status() {
-    if [[ $- == *e* ]]; then echo "-"; else echo "+"; fi
-}
-
 remove_file_or_dir() {
     log_warning "removing: $(cbasename "$1")"
     rm -rvf "$1"
@@ -294,7 +290,6 @@ docker_images_exist() {
         return 2
     fi
     images_list="$1"
-    state=true
     for image in $(cat "$images_list") registry:latest; do
         docker_image_exists "$image"
         exit_code=$?
