@@ -23,7 +23,11 @@ else
     log_info "already up to date."
 fi
 
-if [ ! -e "$kubespray_dir" ]; then
-    cp -rp "$kubespray_backup_dir" "$kubespray_dir"
+set +e
+tag=$(git -C "$kubespray_dir" describe --tags 2>/dev/null)
+set -e
+if [ ! "$tag" = "$kubespray_release_version" ]; then
+    cp -rp "$kubespray_backup_dir"/* "$kubespray_dir"
+    cp -rp "$kubespray_backup_dir"/.* "$kubespray_dir"
     log_info "created dir: $(cbasename $kubespray_dir)"
 fi

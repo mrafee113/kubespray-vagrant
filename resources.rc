@@ -22,7 +22,8 @@ inventories_dir="$kubespray_dir"/inventory
 src_inventory_dir="$assets_dir"/inventory
 target_inventory_dir="$inventories_dir"/"$(grep '$inventory' "$assets_dir"/Vagrantfile.conf | cut -d'"' -f2 | cut -d'/' -f2)"  # should depend on $vagrantconf
 
-inventory_edit_scripts_dir="$root_dir"/inventory-edit-scripts
+inventory_edit_scripts_dir="$root_dir"/inventory-edit.d
+playbooks_edit_scripts_dir="$root_dir"/playbooks-edit.d
 
 dest_working_dir="$kubespray_dir"/vagrant
 relative_working_dir="$(echo "$dest_working_dir" | sed "s|$kubespray_dir/||")"
@@ -34,6 +35,7 @@ vbox_guest_additions_dir="$assets_dir"/vbox-guest-additions
 offline_files_dir="$assets_dir"/offline-files
 offline_images_dir="$assets_dir"/offline-images
 registry_volume_dir="$assets_dir"/registry-volume
+certs_dir="$assets_dir"/certs
 
 ## inventory files
 offline_file="$src_inventory_dir"/group_vars/all/offline.yml
@@ -44,6 +46,12 @@ containerd_file="$src_inventory_dir"/group_vars/all/containerd.yml
 ## web links
 kubespray_github_url="https://github.com/kubernetes-sigs/kubespray.git"
 kubespray_release_version="v2.22.1"
+debian_repo_url="http://ftp.snt.utwente.nl/pub/os/linux/ubuntu"
+
+## registry
+# FQDN
+registry_common_name="registry.$(hostname).host"
+registry_hostname="$registry_common_name"
 
 # mkdir
 for dir in \
@@ -52,7 +60,8 @@ for dir in \
     "$vbox_guest_additions_dir" \
     "$offline_files_dir" \
     "$offline_images_dir" \
-    "$registry_volume_dir"
+    "$registry_volume_dir" \
+    "$certs_dir"
 do
     mkdir -p "$dir"
 done

@@ -14,6 +14,7 @@ I wanted to deploy kubernetes on my local device with a hypervisor but I faced s
 > I set `set -eo pipefail` in every script so in case of any failures the process stops.  
 > The file `resources.rc` is sourced in every script and all its content made available.  
 
+## Scripts
 ### init.sh  
 The point of this file is to provide an automated sample. It's like an executable roadmap that shows how the files should be executed at first glance.  
 Feel free to modify it or follow it manually.  
@@ -37,6 +38,37 @@ This file contains a bunch of functions to ease the writing of the scripts. It i
     - Takes 3 arguments. `var_name`, `var_value`, and `file`. And an optional `--head`.
     - Its purpose is to change/set the value of a variable in a yaml file.  
     - If the variable doesn't already exist, by default it will be added to the end of the file. Unless `--head` is given, then it will be added to the beginning of the file. (pointless feature I know)  
+- `number_lines_of_file`
+    - takes 1 argument `file`.
+    - just an alias of the `nl` command with extra options for better file output.
+- `find_first_line`
+    - takes 2 mandatory arguments `file` and `pattern`. plus an optional argument `start_line_number`.
+    - locates the first line after `start_line_number` in `file` that matches `pattern`.
+    - if found the line number will be printed.
+    - if not found, it will `return 1`.
+- `find_first_blank_line`
+    - takes 2 arguments `file` and `start_line_number`.
+    - locates the first blank line using `find_first_line`
+- `yaml_list_exists`
+    - takes 2 arguments `var_name` and `file`.
+    - locates variable `var_name` in yaml file `file`.
+    - if found returns `0`.
+    - if not found returns `1`.
+    - #TODO: probably better named `yaml_var_exists`
+- `yaml_list_has_line`
+    - takes 3 arguments `var_name`, `file`, and `line`.
+    - if variable doesn't exist it will  return `1`.
+    - tries to locate the `line` inside the yaml list.
+    - if found it returns `0`.
+    - if not found it returns `1`.
+- `yaml_insert_line`
+    - takes 3 arguments `line`, `var_name`, and `file`.
+    - inserts the `line` in `file` inside `var_name` above all other lines.
+- `set_yaml_list`
+    - takes 2 mandatory arguments `var_name` and `file`. Any other argument provided after will be considere as part of the list `lines`.
+    - if the variable is commented it'll be uncommented. if it's not found, it'll be added at the end of the file.
+    - lines will be added to list using `yaml_insert_line`.
+    - do note that the lines will be added in reverse order due to the nature of `yaml_insert_line`.
 - `verify_ip_addr`  
     - checks if an ip address is a valid ipv4 address using regex.  
     - in case it isn't valid, it returns `1`.  
@@ -121,7 +153,7 @@ This file contains some things for scripts to use, also it can be used for debug
         - `inventories_dir=$kubespray_dir/inventory`
         - `src_inventory_dir=$assets_dir/inventory` : your actual inventory. if you want to modify things either manually or by modifying scripts, this is your directory.
         - `target_inventory_dir=$inventories_dir/user` : `user` is based on the value of `$inventory` in file `$assets_dir/Vagrantfile.conf`. this directory will be used by kubespray. `src_inventory_dir` will be copied here.
-        - `inventory_edit_scripts_dir=$root_dir/inventory-edit-scripts` : contains a bunch of scripts to edit `src_inventory_dir`
+        - `inventory_edit_scripts_dir=$root_dir/inventory-edit.d` : contains a bunch of scripts to edit `src_inventory_dir`
         - `dest_working_dir=$kubespray_dir/vagrant` : this directory will be mounted inside each machine as `/vagrant`
         - `relative_working_dir` : `$dest_working_dir`, but relative to `$kubespray_dir`
         - `remote_working_dir=/vagrant/$relative_working_dir` : #bug It should be /vagrant... I think...
@@ -131,6 +163,7 @@ This file contains some things for scripts to use, also it can be used for debug
             - `offline_files_dir=$assets_dir/offline-files` : this dir contains offline files. they are organized like this. there's a "%Y-%m-%d-%H-%D.list" that contains a list of links (they may be a bit weird but you'll find that out later in the docs). There's also a directory with the same name (minus the `.list`) that contains the downloaded files.
             - `offline_images_dir=$assets_dir/offline-images` : same as offline-files
             - `registry_volume_dir=$assets_dir/registry-volume` : this directory will be mounted persistent storage for docker private registry.
+            - `certs_dir=$assets_dir/certs` : this directory will host certificates generated e.g. for docker registry
         - inventory files
             - `offline_file=$src_inventory_dir/group_vars/all/offline.yml`
             - `mirror_file=$src_inventory_dir/group_vars/all/mirror.yml`
@@ -139,6 +172,10 @@ This file contains some things for scripts to use, also it can be used for debug
     - web links
         - `kubespray_github_url="https://github.com/kubernetes-sigs/kubespray.git"`
         - `kubespray_release_version="v2.22.1"`
+            - If you want to change this from the default of the repo, you have to be very careful. The commands in `playbooks-edit.sh` modify the contents of the git repo based on this version of kubespray.
+        - `debian_repo_url`: this url will be used in `/etc/apt/sources.list` as the default repo for apt
+    - registry
+        - `registry_common_name` and `registry_hostname` will be used in node's `/etc/hosts` and for deploying the host's docker registry.
 
 Also these directories will be created if they don't already exist:
 - `assets_dir`
@@ -174,11 +211,72 @@ Takes the following arguments:
 
 Except for `--all`, every arg corresponds with a file in `$inventory_edit_scripts_dir`.  
 
-### inventory-edit-scripts/
-#### offline-files
-#### mirror-file
-#### k8s-cluster-file
+### registry-certs.sh
+Its purpose is to generate a certificate for the docker registry.  
+- output files will be in `$certs_dir`.
+    - `registry.key`
+    - `registry.crt`
+- only if both files exist, the script will `exit 0` early on.
+- the certificate will have `$registry_common_name` as its `CN` and also as `subjectAltName = DNS:`.
+- the `registry.crt` file will be copied to:
+    - `/usr/local/share/ca-certificates/${registry_common_name}/`
+    - `/etc/docker/certs.d/${registry_common_name}/`
+    - `${dest_working_dir}/certs.d/`
+- after copying the certificate, it does run `sudo update-ca-certificates`
+- also it makes sure that the line `127.0.0.1 ${registry_common_name}` is in `/etc/hosts`
+
+### registry.sh
+This handles the docker `registry` container.  
+- It uses `$assets_dir/registry-volume` as persistent storage.
+- Serves images on port `443`.
+
+### inventory-edit.d/
+#### offline.sh
+Variables handled:  
+- `files_repo_link`: "http://${host_ip}:8080"  # nginx
+  
+- `kubectl`, `kubelet`, `kubeadm`
+- `cni plugins`
+- `crictl`
+- `etcd`
+- `calicoctl`
+- `calico crds`
+- `ciliumcli`
+- `helm`
+- `crun`
+- `kata containers`
+- `cri dockerd`
+- `runc`
+- `crio`
+- `skopeo`
+- `containerd`
+- `nerdctl`
+- `gvisor runsc`
+- `gvisor containerd shim`
+- `krew`
+- `youki`
+- `yq`
+  
+- `kube_image_repo`
+- `github_image_repo`
+- `docker_image_repo`
+- `quay_image_repo`
+
 #### containerd-file
+- `containerd_registries < "https://registry-1.docker.io"`
+- `containerd_ca_registries < "https://${registry_hostname}"`
+    - this variable will add some things in `/etc/containerd/config.toml` on nodes so that they know where to access the certificates for private registry.  
+
+### playbooks-edit.d/
+#### etc-hosts
+This script creates a task in playbook `kubespray/roles/kubernetes/preinstall/tasks/0090-etchosts.yml`.  
+The task is a `lineinfile` that inserts lines inside `/etc/hosts`.  
+There's a function that takes multiple lines as arguments and statically adds them to the yaml file.  
+
+#### containerd-config-j2
+This script adds a couple of `jinja2` lines inside `kubespray/roles/container-engine/containerd/templates/config.toml.j2`.  
+- These lines of code make up an iteration over yaml list `containerd_ca_registries`. The purpose is to add `ca` variable to the config to allow containerd to pull images off of the private container registry.  
+
 ### vbox-guest-additions.sh
 ### vagrantfile-edit.sh
 ### inventory-copy.sh
@@ -186,9 +284,10 @@ Except for `--all`, every arg corresponds with a file in `$inventory_edit_script
 ### manage-offline-files
 ### manage-offline-images
 ### assets
-#### docker-daemon.json
-#### docker.sh
+#### certs.sh
 #### init.sh
+#### ssh-pubkey.sh
 #### offline-files/ and offline-images/
 #### Vagrantfile.conf
 #### vbox-guest-additions/
+#### certs/

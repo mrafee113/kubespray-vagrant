@@ -9,7 +9,8 @@ source "$cwd"/resources.rc
 
 ## args
 args=("update-git" "vagrant-conf-copy" "venv" "inventory-init" \
-    "inventory-edit" "inventory-copy" "vbox-guest-additions" "vagrantfile-edit"  \
+    "inventory-edit" "inventory-copy" "vbox-guest-additions" "playbooks-edit" \
+    "registry-certs" "vagrantfile-edit" \
     "generate-offline-lists" "manage-offline-files" "manage-offline-images" \
     "vagrant-up-help")
 for arg in ${args[*]}; do
@@ -35,6 +36,8 @@ Usage: $(cbasename "$0") [options]
     --inventory-edit
     --inventory-copy
     --vbox-guest-additions
+    --playbooks-edit
+    --registry-certs
     --vagrantfile-edit
     --generate-offline-lists
     --[no]-manage-offline-files
@@ -45,7 +48,9 @@ Usage: $(cbasename "$0") [options]
     Note that If no options/flags are provided, the default flags will be:
         --update-git --vagrant-conf-copy --venv \
         --inventory-init --inventory-edit --inventory-copy \
-        --vagrantfile-edit --vagrant-up-help
+        --playbooks-edit --registry-certs --vagrantfile-edit \
+        --manage-offline-files --manage-offline-images \
+        --vagrant-up-help
 """
     log_help "$help_test"
 }
@@ -85,6 +90,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --vbox-guest-additions)
       arg_vbox_guest_additions=true
+      shift
+      ;;
+    --playbooks-edit)
+      arg_playbooks_edit=true
+      shift
+      ;;
+    --registry-certs)
+      arg_registry_certs=true
       shift
       ;;
     --vagrantfile-edit)
@@ -154,10 +167,16 @@ if [ "$arg_inventory_init" = "true" ]; then
     $root_dir/inventory-init.sh --reset
 fi
 if [ "$arg_inventory_edit" = "true" ]; then
-    $root_dir/inventory-edit.sh --offline-file --k8s-cluster-file --mirror-file
+    $root_dir/inventory-edit.sh --offline-file --k8s-cluster-file --containerd-file
 fi
 if [ "$arg_vbox_guest_additions" = "true" ]; then
     $root_dir/vbox-guest-additions.sh
+fi
+if [ "$arg_playbooks_edit" = "true" ]; then
+    $root_dir/playbooks-edit.sh --containerd-config-j2 --etc-hosts
+fi
+if [ "$arg_registry_certs" = "true" ]; then
+    $root_dir/registry-certs.sh
 fi
 if [ "$arg_vagrantfile_edit" = "true" ]; then
     $root_dir/vagrantfile-edit.sh --download-keep-remote-cache --machine-init
@@ -196,26 +215,35 @@ if [ "$arg_manage_offline_images" = "true" ]; then
 
     set +e
     docker_images_exist "$images_list"
-    exit_code=$?
+    images_exist_code=$?
+    docker_imagefiles_exist "$images_list"
+    imagefiles_exist_code=$?
     set -e
-    if   [ $exit_code -eq 1 ]; then
-        $root_dir/manage-offline-images.sh download
-    elif [ $exit_code -eq 2 ]; then
+
+    if   [ $images_exist_code -eq 2 ] || [ $imagefiles_exist_code -eq 2 ]; then
+        log_error "argument erro in docker_images_exist || docker_imagefiles_exist"
         exit 1
+    fi
+    if   [ $images_exist_code -eq 1 ] && [ $imagefiles_exist_code -eq 1 ]; then
+        $root_dir/manage-offline-images.sh download
+    elif   [ $imagefiles_exist_code -eq 1 ]; then
+        $root_dir/manage-offline-images.sh "export"
     fi
     
     set +e
-    docker_imagefiles_exist "$images_list"
-    exit_code=$?
+    $root_dir/manage-offline-images.sh served
+    served=$?
     set -e
-    if   [ $exit_code -eq 1 ]; then
-        $root_dir/manage-offline-images.sh "export"
-    elif [ $exit_code -eq 2 ]; then
-        exit 1
+    if [ $served -ne 0 ]; then
+        $root_dir/manage-offline-images.sh serve
+        $root_dir/manage-offline-images.sh cleanup
+    else
+        log_info "images already being served"
     fi
 
-    $root_dir/manage-offline-images.sh serve
-    $root_dir/manage-offline-images.sh cleanup
+    if ! maintain_docker_container registry; then
+        $root_dir/registry.sh
+    fi
 fi
 if [ "$arg_vagrant_up_help" = "true" ]; then
     $root_dir/vagrant-up-help.sh

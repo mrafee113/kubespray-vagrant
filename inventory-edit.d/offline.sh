@@ -89,8 +89,6 @@ yq_link="{{ files_repo }}/yq-{{ yq_version }}-linux-{{ image_arch }}"
 set_yaml_var "yq_download_url" "$youki_link" "$offline_file"
 
 # images
-host_name=$(hostname)
-docker_registry_link="${host_name}:5000"
 for name in kube gcr github docker quay; do
-    set_yaml_var "${name}_image_repo" "$docker_registry_link" "$offline_file"
+    set_yaml_var "${name}_image_repo" "$registry_hostname" "$offline_file"
 done

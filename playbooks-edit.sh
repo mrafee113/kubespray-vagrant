@@ -4,53 +4,53 @@ set -eo pipefail
 cwd="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 source "$cwd"/resources.rc
 
-log_announce "playbook edit"
+## args
+arg_containerd_config_j2=false
+arg_etc_hosts=false
+arg_all=false
 
-# /etc/hosts
-add_to_etchosts() {
-    local playbook_file="$kubespray_dir"/roles/kubernetes/preinstall/tasks/0090-etchosts.yml
-    local task_name="Add custom entries to /etc/hosts"
-    local task_line="$(get_host_ip) $(hostname)"
-    local task=""" \n
-- name: $task_name
-  lineinfile:
-    dest: /etc/hosts
-    line: \"$task_line\"
-    backup: yes
-    state: present
-    unsafe_writes: true
-    insertafter: \"EOF\"
+display_usage() {
+    log_help """
+Usage: $(cbasename $0) [options]
+    --containerd-config-j2
+    --etc-hosts
+    --all : If this is provided, all actions are taken regardless of any other flags provided.
+
+    Note that If no options/flags are provided, no actions will be taken.
 """
-    
-    if grep "$task_name" "$playbook_file" >/dev/null 2>&1; then
-        local start_line=$(grep -n "$task_name" "$playbook_file" | cut -d':' -f1)
-        local end_line=""
-        lines="$(grep -n -E '^\s*$' "$playbook_file" | cut -d':' -f1)"
-        while IFS= read -r line; do
-            if [ $line -ge $start_line ]; then
-                end_line=$line
-                break
-            fi
-        done <<< "$(grep -n -E '^\s*$' "$playbook_file" | cut -d':' -f1)"
-        if [ -z $end_line ]; then return 2; fi
-        
-        for cnt in $(seq $((end_line + 1)) -1 $start_line); do
-            sed -i "${cnt}d" "$playbook_file"
-        done
-    fi
-
-    local line_number=$(grep -n 'name: Update facts' "$playbook_file" | cut -d':' -f1)
-    line_number=$((line_number - 2))
-
-    if ! grep "$task_name" "$playbook_file"; then
-        while IFS= read -r line; do
-            if [ -z "$line" ]; then continue; fi
-
-            local pattern="$line_number"'i\'"${line//\//\\\/}"
-            local print_pattern="${line_number}p"
-            sedfile "$pattern" "$print_pattern" "$playbook_file"
-            line_number=$((line_number + 1))
-        done <<< "$task"
-    fi
+    exit 1
 }
-add_to_etchosts
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --containerd-config-j2)
+            arg_containerd_config_j2=true
+            shift
+            ;;
+        --etc-hosts)
+            arg_etc_hosts=true
+            shift
+            ;;
+        --all)
+            arg_all=true
+            shift
+            ;;
+        *)
+            echo "Invalid option: $1"
+            display_usage
+            ;;
+    esac
+done
+
+if [ "$arg_all" = "true" ]; then
+    arg_containerd_config_j2=true
+    arg_etc_hosts=true
+fi
+
+if [ "$arg_containerd_config_j2" = "true" ]; then
+    $playbooks_edit_scripts_dir/containerd-config-j2.sh
+fi
+
+if [ "$arg_etc_hosts" = "true" ]; then
+    $playbooks_edit_scripts_dir/etc-hosts.sh
+fi

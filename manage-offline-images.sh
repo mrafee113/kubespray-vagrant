@@ -13,6 +13,8 @@ $(cbasename "$0") [mode] [images.list]
         - 'export': to extract the images from docker into a directory and then a tarball
         - 'cleanup': to remove the pulled docker images from docker itself
         - 'serve': to extract a tarball and load push it into a docker registry at localhost:5000
+        - 'check': to visually check which images have not been served
+        - 'served': to check whether all images have been served or not. for script use.
 """
     log_help "$help"
 }
@@ -41,7 +43,8 @@ mode="$1"
 shift
 
 if [ ! "$mode" = "download" ] && [ ! "$mode" = "export" ] && \
-   [ ! "$mode" = "cleanup"  ] && [ ! "$mode" = "serve"  ]; then
+   [ ! "$mode" = "cleanup"  ] && [ ! "$mode" = "serve"  ] && \
+   [ ! "$mode" = "check"    ] && [ ! "$mode" = "served" ]; then
     log_error "$mode is not a valid option"
     print_help
     exit 1
@@ -172,7 +175,7 @@ cleanup() {
             else
                 tagged_image="$image"
             fi
-            tagged_image="$(hostname):5000/${tagged_image}"
+            tagged_image="${registry_hostname}/${tagged_image}"
             echo "$tagged_image" >> /tmp/images.tmp
         done
     fi
@@ -222,24 +225,14 @@ serve() {
     
     # tar -zxvf "${images_tar}"
     docker load -i "${images_dir}"/registry-latest.tar
-    set +e 
-    docker container inspect registry >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        docker run -d \
-            --restart=always \
-            -p 5000:5000 \
-            --name registry \
-            -v "$assets_dir"/registry-volume:/var/lib/registry \
-            registry:latest
-    fi
-    set -e
-    
+    $root_dir/registry.sh
+
     local cnt=1
     local max=$(cat "$images_txt" | wc -l)
     while read -r line; do
         file_name=$(echo ${line} | awk '{print $1}')
         raw_image=$(echo ${line} | awk '{print $2}')
-        new_image="$(hostname):5000/${raw_image}"
+        new_image="${registry_hostname}/${raw_image}"
         org_image=$(docker load -i "${images_dir}"/"${file_name}" | head -n1 | awk '{print $3}')
         image_id=$(docker image inspect ${org_image} --format '{{.Id}}' | awk -F: '{print $2}')
         if [ -z "${file_name}" ]; then
@@ -266,8 +259,47 @@ serve() {
     done <<< "$(cat ${images_txt})"
 }
 
+check() {
+    log_announce "check mode"
+    if [ ! -e "$images_txt" ]; then
+        log_error "file $(cbasename "$images_txt") does not exist! have you exported images yet?"
+        return 1
+    fi
+    
+    local cnt=1
+    local max=$(cat "$images_txt" | wc -l)
+    while read -r line; do
+        raw_image=$(echo ${line} | awk '{print $2}')
+        served_image="${registry_hostname}/${raw_image}"
+        if docker_image_exists "$served_image"; then
+            log_info "$cnt/$max: $served_image"
+        else
+            log_error "$cnt/$max: $served_image"
+        fi
+        cnt=$((cnt + 1))
+    done <<< "$(cat ${images_txt})"
+}
+
+served() {
+    if [ ! -e "$images_txt" ]; then
+        log_error "file $(cbasename "$images_txt") does not exist! have you exported images yet?"
+        return 1
+    fi
+
+    while read -r line; do
+        raw_image=$(echo ${line} | awk '{print $2}')
+        served_image="${registry_hostname}/${raw_image}"
+        if ! docker_image_exists "$served_image"; then
+            exit 1
+        fi
+    done <<< "$(cat ${images_txt})"
+    exit 0
+}
+
 if [ "$mode" = "download" ]; then download $*
 elif [ "$mode" = "export" ]; then export_ $*
 elif [ "$mode" = "cleanup" ]; then cleanup $*
 elif [ "$mode" = "serve" ]; then serve $*
+elif [ "$mode" = "check" ]; then check $*
+elif [ "$mode" = "served" ]; then served $*
 fi

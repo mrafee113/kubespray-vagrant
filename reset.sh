@@ -11,6 +11,7 @@ arg_venv=false
 arg_vbox_guest_additions_iso=false
 arg_offline_files=false
 arg_inventory=false
+arg_certs=false
 
 arg_default=false
 arg_full=false
@@ -25,6 +26,7 @@ Usage: $(cbasename $0) [options]
     --offline-files              (=false)
     --offline-images             (=false)
     --inventory                  (=false)
+    --certs                      (=false)
 
     --default                    (=true if no arg provided else false)
     --full                       (=false)
@@ -71,6 +73,10 @@ while [[ $# -gt 0 ]]; do
             arg_inventory=true
             shift
             ;;
+        --certs)
+            arg_certs=true
+            shift
+            ;;
         --default)
             arg_default=true
             shift
@@ -78,6 +84,10 @@ while [[ $# -gt 0 ]]; do
         --full)
             arg_full=true
             shift
+            ;;
+        *)
+            log_error "wrong arg provided $*"
+            exit 1
             ;;
     esac
 done
@@ -94,19 +104,30 @@ if [ "$arg_full" = "true" ]; then
     arg_offline_files=true
     arg_offline_images=true
     arg_inventory=true
+    arg_certs=true
 fi
 
-if [ "$arg_kubespray" = "true" ]; then
-    remove_file_or_dir "$kubespray_dir"; fi
-if [ "$arg_kubespray_backup" = "true" ]; then
-    remove_file_or_dir "$kubespray_backup_dir"; fi
-if [ "$arg_venv" = "true" ]; then
-    remove_file_or_dir "$venv_dir"; fi
+if [ "$arg_kubespray"                = "true" ]; then
+    remove_file_or_dir "$kubespray_dir"                 
+fi
+if [ "$arg_kubespray_backup"         = "true" ]; then
+    remove_file_or_dir "$kubespray_backup_dir"
+fi
+if [ "$arg_venv"                     = "true" ]; then
+    remove_file_or_dir "$venv_dir"
+fi
 if [ "$arg_vbox_guest_additions_iso" = "true" ]; then
-    remove_file_or_dir "$vbox_guest_additions_dir"/*.iso; fi
-if [ "$arg_offline_files" = "true" ]; then
-    remove_file_or_dir "$offline_files_dir"/*; fi
-if [ "$arg_offline_images" = "true" ]; then
-    remove_file_or_dir "$offline_images_dir"/*; fi
-if [ "$arg_inventory" = "true" ]; then
-    remove_file_or_dir "$src_inventory_dir"; fi
+    remove_file_or_dir "$vbox_guest_additions_dir"/*.iso
+fi
+if [ "$arg_offline_files"            = "true" ]; then
+    remove_file_or_dir "$offline_files_dir"/*
+fi
+if [ "$arg_offline_images"           = "true" ]; then
+    remove_file_or_dir "$offline_images_dir"/*
+fi
+if [ "$arg_inventory"                = "true" ]; then
+    remove_file_or_dir "$src_inventory_dir"
+fi
+if [ "$arg_certs"                    = "true" ]; then
+    remove_file_or_dir "$certs_dir"/*
+fi
