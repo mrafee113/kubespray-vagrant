@@ -47,6 +47,9 @@ containerd_file="$src_inventory_dir"/group_vars/all/containerd.yml
 kubespray_github_url="https://github.com/kubernetes-sigs/kubespray.git"
 kubespray_release_version="v2.22.1"
 debian_repo_url="http://ftp.snt.utwente.nl/pub/os/linux/ubuntu"
+vbox_guest_additions_version="7.0.6"
+vbox_guest_additions_iso="VBoxGuestAdditions_${vbox_guest_additions_version}.iso"
+vbox_guest_additions_url="http://download.virtualbox.org/virtualbox/${vbox_guest_additions_version}/${vbox_guest_additions_iso}"
 
 ## registry
 # FQDN

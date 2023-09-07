@@ -4,13 +4,10 @@ set -eo pipefail
 cwd="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 source "$cwd"/resources.rc
 
-GUEST_ADDITION_VERSION=7.0.6
-GUEST_ADDITION_ISO=VBoxGuestAdditions_${GUEST_ADDITION_VERSION}.iso
-
-filename="$vbox_guest_additions_dir/$GUEST_ADDITION_ISO"
+filename="$vbox_guest_additions_dir/$vbox_guest_additions_iso"
 if [ ! -e "$filename" ]; then
     log_warning "downloading VboxGuestAdditions iso with wget"
-    wget -O "$filename" "http://download.virtualbox.org/virtualbox/${GUEST_ADDITION_VERSION}/${GUEST_ADDITION_ISO}"
+    wget -O "$filename" "$vbox_guest_additions_url"
 else
     log_info "vbox-guest-additions: file already exists: $filename"
 fi
