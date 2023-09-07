@@ -278,16 +278,89 @@ This script adds a couple of `jinja2` lines inside `kubespray/roles/container-en
 - These lines of code make up an iteration over yaml list `containerd_ca_registries`. The purpose is to add `ca` variable to the config to allow containerd to pull images off of the private container registry.  
 
 ### vbox-guest-additions.sh
+If the VBoxGuestAdditions iso doesn't exist, it'll be downloaded using `wget`. And either way it'll be copied to `$dest_working_dir` for usage by shell provisioners.  
+
 ### vagrantfile-edit.sh
+The purpose of this script is to edit the `Vagrantfile` in `$kubespray_dir` to allow some custom modifications.  
+Accepts the following args:
+- `--download-keep-remote-cache`  
+  Sets variable `download_keep_remote_cache` to `True`.  
+- `--vbox-guest-additions`  
+  Adds a shell provisioning using script `install-vbox-guest-additions.sh`  
+- `--machine-init`  
+  Adds a shell provisioning using scripts `init.sh`, `ssh-pubkey.sh`, and `certs.sh`.  
+- `--all`  
+  This argument turns all other flags.
+
+Regardless of the arguments, variable `ansible.compatibility_mode` will be set to `"2.0"` for ansible provisioning.  
+
 ### inventory-copy.sh
+- copies the inventory from `$assets_dir` to `$kubespray_dir`.
+- if no inventory is found in `$assets_dir`, the `sample` inventory from kubespray will be used.
+
 ### generate-offline-lists.sh
+This script is a rip off of `kubespray/contrib/offline/generate_list.sh`.  
+The differences are:  
+- output `files.list` includes generated filenames along with the urls so filenames are proper.  
+    - file format: `name[-${version}][-${operating_system}][-${architecture}][.${format}]`  
+
 ### manage-offline-files
+As the name suggests the purpose of this script is to manage offline files.  
+All the commands in this script depend on the function `get_latest_offline_files_list` to access **urls file** and **download destination**.
+It accepts these commands:  
+- `download`  
+    - The preference for the downloading utility is `aria2c`, but if that is not available `wget` will be used.  
+    - If the input urls file contains filenames, they will be prefixed with `DOWNLOADER_PREFIX`.  
+- `check`  
+    - one by one logs whether each file exists in destination download directory.  
+- `serve`  
+    - deploys the docker container `kubespray-offline-nginx` to serve the files on port `80`.  
+    - download destination directory will be mounted to `/usr/share/nginx/html/download`  
+    - the nginx config file is a copy of `kubespray/contrib/offline/nginx.conf`    
+
 ### manage-offline-images
+As the name suggests the purpose of this script is to manage offline files.  
+All the commands in this script depend on the function `get_latest_offline_images_list` to access **urls file** and **export destination**.  
+It accepts these commands:  
+- `download`
+    - the urls will be iterated (progress will be shown)  
+    - download progress in terms what images have been completed will be stored in `images.progress`. if download is cut off due to any problems, as long as `images.progress` is there, it will be resumed. if all images are downloaded completely, `images.progress` will be removed.  
+    - if any images fail, at the end of the iteration, they will be reported.  
+- `export`  
+    - iterates over images and exports the downloaded images to **export destination**.  
+- `cleanup`  
+    - iterates over images and removes them from the container runtime  
+    - it also accepts argument `--tagged-images`. if this is provided, images tagged for docker private registry will also be removed.  
+- `serve`  
+    - iterates over images and tags them, then pushes them to the docker private registry.  
+    - if the registry container is not run, it'll use `registry.sh` to run it.  
+    - whether the image is already in the container runtime or not, it will be loaded from the **export destination**.  
+- `check`  
+    - iterates over images and logs whether they are available in the docker registry  
+- `served`  
+    - iterates over images and if any images are not available in the docker registry, it will return `1`. otherwise it'll return `0`.
+
 ### assets
 #### certs.sh
+This script creates directories in `/etc/docker/certs.d/` and `/etc/containerd/certs.d/` according to the host's `$registry_common_name`. Then it copies the certificate to them to allow the container runtimes to access the host's private registry.  
+
 #### init.sh
+- If `$debian_repo_url` is not empty, it will change the urls inside `/etc/apt/sources.list`.  
+- It will run `apt update`.  
+- It will install `bzip2`, `tar`, `net-tools`.
+
 #### ssh-pubkey.sh
+If the host's ssh public key is not yet added to `.ssh/authorized_keys`, it will append it.
+
 #### offline-files/ and offline-images/
+These directories host the downloaded files and exported images.  
+- The format is that there is a file named with format `%Y-%m-%d-%H-%M.list`. This file contains image urls generated with `generate-offline-lists.sh`; actually the file is generated by that script.  
+- Then there is a directory with name `%Y-%m-%d-%H-%M` which contains the actual files.  
+- There may be a file `%Y-%m-%d-%H-%M.txt` after images have been exported. This file contains a formatted tag name for each image.  
+- Also the file `images.progress` that is used by `manage-offline-images.sh download` is stored here.  
+
 #### Vagrantfile.conf
-#### vbox-guest-additions/
+This is an extra configuration that will be passed to the `$kubespray_dir/Vagrantfile` file. It will only work for ruby variables that are defined in the `Vagrantfile`. Tailor this to your requirements.  
+
 #### certs/
+Includes `registry.crt` and `registry.key` files for container private registry.
