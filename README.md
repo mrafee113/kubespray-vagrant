@@ -292,7 +292,9 @@ Accepts the following args:
 - `--all`  
   This argument turns all other flags.
 
-Regardless of the arguments, variable `ansible.compatibility_mode` will be set to `"2.0"` for ansible provisioning.  
+Regardless of the arguments:  
+- variable `ansible.compatibility_mode` will be set to `"2.0"` for ansible provisioning.  
+- variable `download_cache_dir` will be set to point to `$assets_dir/kubespray_cache`.
 
 ### inventory-copy.sh
 - copies the inventory from `$assets_dir` to `$kubespray_dir`.

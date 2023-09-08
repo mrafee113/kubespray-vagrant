@@ -10,6 +10,7 @@ assets/offline-files/
 assets/offline-images/
 assets/registry-volume/
 assets/certs/
+assets/kubespray_cache/
 
 test.sh
 

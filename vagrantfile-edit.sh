@@ -148,3 +148,15 @@ registry_certs() {
 if [ "$arg_machine_init" = "true" ]; then
     registry_certs
 fi
+
+kubespray_cache() {
+    line='"download_cache_dir": File.expand_path("..", File.expand_path($0)) + "\/assets\/kubespray_cache"'
+    if grep "$line" "$vagrant_file" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    pattern=s/"\"download_cache_dir\": ENV\['HOME'\] \+ \"\/kubespray_cache\""/"$line"/g
+    print_pattern="/\"download_cache_dir\":/p"
+    sedfile "$pattern" "$print_pattern" "$vagrantfile" --regex
+}
+kubespray_cache
